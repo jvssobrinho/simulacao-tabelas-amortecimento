@@ -1,2 +1,391 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Interativo de Sistemas de Amortização</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals (Tailwind Slate/Amber) -->
+    <!-- Application Structure Plan: A dashboard-style single-page application. It features a main control panel at the top for user inputs (loan amount, interest rate, term) and a simulation button. Below, a responsive grid displays individual cards for each amortization system. Each card contains key calculated metrics (e.g., first/last installment, total interest) and two line charts visualizing the installment value and outstanding balance over time. This structure was chosen to facilitate direct, side-by-side comparison, allowing users to instantly see the impact of changing variables across all systems, which is far more intuitive and educational than a static table. -->
+    <!-- Visualization & Content Choices: Report Info: Table comparing 5 amortization systems. -> Goal: Allow users to compare systems dynamically. -> Viz/Presentation Method: Interactive sliders for input, summary cards with key performance indicators (KPIs), and dual line charts (via Chart.js) per system to show trends. -> Interaction: Users adjust loan parameters via sliders and click a button to trigger the simulation, which updates all cards and charts. -> Justification: This multi-faceted approach provides layers of understanding—from high-level KPIs to detailed trend analysis via charts—making complex financial concepts accessible. -> Library/Method: Vanilla JS for calculations, Chart.js for canvas-based charts. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chart-container { position: relative; height: 220px; width: 100%; margin-top: 1rem; }
+        .slider-thumb::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; background: #c2410c; cursor: pointer; border-radius: 50%; }
+        .slider-thumb::-moz-range-thumb { width: 20px; height: 20px; background: #c2410c; cursor: pointer; border-radius: 50%; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Simulador de Sistemas de Amortização</h1>
+            <p class="mt-2 text-slate-600 max-w-2xl mx-auto">Compare os principais sistemas de financiamento. Ajuste os valores abaixo e veja o impacto em cada modalidade.</p>
+        </header>
+
+        <div class="bg-white p-6 rounded-2xl shadow-lg mb-8 sticky top-4 z-10">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                
+                <div>
+                    <label for="loanAmount" class="block text-sm font-medium text-slate-700">Valor do Empréstimo</label>
+                    <input id="loanAmount" type="range" min="1000" max="1000000" step="1000" value="100000" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer slider-thumb accent-orange-800">
+                    <span id="loanAmountValue" class="text-lg font-bold text-orange-800">R$ 100.000,00</span>
+                </div>
+                
+                <div>
+                    <label for="interestRate" class="block text-sm font-medium text-slate-700">Taxa de Juros Anual (%)</label>
+                    <input id="interestRate" type="range" min="1" max="30" step="0.1" value="10" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer slider-thumb accent-orange-800">
+                    <span id="interestRateValue" class="text-lg font-bold text-orange-800">10.0%</span>
+                </div>
+
+                <div>
+                    <label for="loanTerm" class="block text-sm font-medium text-slate-700">Prazo (Meses)</label>
+                    <input id="loanTerm" type="range" min="12" max="420" step="12" value="120" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer slider-thumb accent-orange-800">
+                    <span id="loanTermValue" class="text-lg font-bold text-orange-800">120 meses</span>
+                </div>
+
+            </div>
+            <div class="text-center mt-6">
+                <button id="simulateBtn" class="bg-orange-800 text-white font-bold py-3 px-8 rounded-lg hover:bg-orange-900 transition-colors shadow-md">
+                    Simular e Comparar
+                </button>
+            </div>
+        </div>
+        
+        <main id="resultsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+             <!-- Cards will be injected here by JavaScript -->
+             <div class="col-span-1 md:col-span-2 lg:col-span-3 text-center p-10 bg-white rounded-2xl shadow-md">
+                <p class="text-slate-500">Ajuste os parâmetros e clique em "Simular e Comparar" para ver os resultados.</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const loanAmountInput = document.getElementById('loanAmount');
+        const interestRateInput = document.getElementById('interestRate');
+        const loanTermInput = document.getElementById('loanTerm');
+        const loanAmountValue = document.getElementById('loanAmountValue');
+        const interestRateValue = document.getElementById('interestRateValue');
+        const loanTermValue = document.getElementById('loanTermValue');
+        const simulateBtn = document.getElementById('simulateBtn');
+        const resultsGrid = document.getElementById('resultsGrid');
+        
+        let charts = {};
+
+        const formatCurrency = (value) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        };
+
+        const updateDisplayValues = () => {
+            loanAmountValue.textContent = formatCurrency(parseFloat(loanAmountInput.value));
+            interestRateValue.textContent = `${parseFloat(interestRateInput.value).toFixed(1)}%`;
+            loanTermValue.textContent = `${loanTermInput.value} meses`;
+        };
+
+        loanAmountInput.addEventListener('input', updateDisplayValues);
+        interestRateInput.addEventListener('input', updateDisplayValues);
+        loanTermInput.addEventListener('input', updateDisplayValues);
+
+        const createCard = (id, title, description) => {
+            const card = document.createElement('div');
+            card.className = 'bg-white p-5 rounded-2xl shadow-md flex flex-col transition-opacity duration-500 opacity-0';
+            card.id = `card-${id}`;
+            card.innerHTML = `
+                <h2 class="text-xl font-bold text-slate-900">${title}</h2>
+                <p class="text-sm text-slate-500 mb-4">${description}</p>
+                <div class="grid grid-cols-2 gap-3 text-sm mb-4 flex-grow">
+                    <div>
+                        <span class="block text-slate-500">1ª Parcela</span>
+                        <strong id="first-installment-${id}" class="block text-lg text-orange-800">-</strong>
+                    </div>
+                    <div>
+                        <span class="block text-slate-500">Última Parcela</span>
+                        <strong id="last-installment-${id}" class="block text-lg text-orange-800">-</strong>
+                    </div>
+                    <div>
+                        <span class="block text-slate-500">Total Pago</span>
+                        <strong id="total-paid-${id}" class="block text-lg text-slate-700">-</strong>
+                    </div>
+                     <div>
+                        <span class="block text-slate-500">Total de Juros</span>
+                        <strong id="total-interest-${id}" class="block text-lg text-slate-700">-</strong>
+                    </div>
+                </div>
+                <div class="chart-container"><canvas id="installments-chart-${id}"></canvas></div>
+                <div class="chart-container"><canvas id="balance-chart-${id}"></canvas></div>
+            `;
+            return card;
+        };
+
+        const renderChart = (canvasId, label, labels, data1, data2 = null) => {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            
+            if (charts[canvasId]) {
+                charts[canvasId].destroy();
+            }
+
+            const datasets = [{
+                label: data2 ? 'Parcela' : 'Saldo Devedor',
+                data: data1,
+                borderColor: '#94a3b8',
+                backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                borderWidth: 2,
+                tension: 0.1,
+                pointRadius: 0,
+                fill: true,
+            }];
+
+            if(data2) {
+                 datasets[0].label = 'Amortização';
+                 datasets.push({
+                    label: 'Juros',
+                    data: data2,
+                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.1,
+                    pointRadius: 0,
+                    fill: true,
+                })
+            }
+
+            charts[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: label, color: '#475569' },
+                        legend: { display: data2 ? true : false, position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${formatCurrency(context.raw)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: (value) => formatCurrency(value).replace(',00',''),
+                                font: { size: 10 }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 0,
+                                minRotation: 0,
+                                font: { size: 10 },
+                                callback: function(value, index, values) {
+                                   if (index === 0 || index === values.length - 1) {
+                                       return this.getLabelForValue(value);
+                                   }
+                                   return '';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        };
+        
+        function calculatePrice(principal, term, annualRate) {
+            const monthlyRate = annualRate / 12 / 100;
+            if (monthlyRate === 0) {
+                 const installment = principal / term;
+                 return { first: installment, last: installment, totalPaid: principal, totalInterest: 0, installments: Array(term).fill(installment), balances: Array.from({length: term + 1}, (_, i) => principal - i * installment) };
+            }
+            
+            const factor = Math.pow(1 + monthlyRate, term);
+            const installment = principal * (monthlyRate * factor) / (factor - 1);
+            
+            let balance = principal;
+            const installmentsData = [];
+            const balances = [principal];
+            let totalInterest = 0;
+            
+            for (let i = 0; i < term; i++) {
+                const interest = balance * monthlyRate;
+                const amortization = installment - interest;
+                balance -= amortization;
+                installmentsData.push({ installment, interest, amortization });
+                balances.push(balance > 0 ? balance : 0);
+                totalInterest += interest;
+            }
+
+            const totalPaid = installment * term;
+            return { first: installment, last: installment, totalPaid, totalInterest, installmentsData, balances };
+        }
+        
+        function calculateSAC(principal, term, annualRate) {
+            const monthlyRate = annualRate / 12 / 100;
+            const amortization = principal / term;
+            
+            let balance = principal;
+            const installmentsData = [];
+            const balances = [principal];
+            let totalPaid = 0;
+            let totalInterest = 0;
+
+            for (let i = 0; i < term; i++) {
+                const interest = balance * monthlyRate;
+                const installment = amortization + interest;
+                balance -= amortization;
+                
+                installmentsData.push({ installment, interest, amortization });
+                balances.push(balance > 0 ? balance : 0);
+                totalPaid += installment;
+                totalInterest += interest;
+            }
+
+            return { first: installmentsData[0].installment, last: installmentsData[term - 1].installment, totalPaid, totalInterest, installmentsData, balances };
+        }
+
+        function calculateSACRE(principal, term, annualRate) {
+            const monthlyRate = annualRate / 12 / 100;
+            let balance = principal;
+            const installmentsData = [];
+            const balances = [principal];
+            let totalPaid = 0;
+            let totalInterest = 0;
+
+            let remainingTerm = term;
+            for(let year = 0; year < term / 12; year++) {
+                const amortization = balance / remainingTerm;
+                for (let month = 0; month < 12; month++) {
+                     if (installmentsData.length >= term) break;
+                     const interest = balance * monthlyRate;
+                     const installment = amortization + interest;
+                     balance -= amortization;
+                     remainingTerm--;
+
+                     installmentsData.push({ installment, interest, amortization });
+                     balances.push(balance > 0 ? balance : 0);
+                     totalPaid += installment;
+                     totalInterest += interest;
+                }
+            }
+
+            return { first: installmentsData[0].installment, last: installmentsData[term - 1].installment, totalPaid, totalInterest, installmentsData, balances };
+        }
+
+        function calculateAmerican(principal, term, annualRate) {
+            const monthlyRate = annualRate / 12 / 100;
+            const interestPayment = principal * monthlyRate;
+            
+            const installmentsData = [];
+            const balances = [principal];
+            let totalPaid = 0;
+            let totalInterest = 0;
+
+            for (let i = 0; i < term; i++) {
+                const isLast = i === term - 1;
+                const installment = isLast ? interestPayment + principal : interestPayment;
+                const interest = interestPayment;
+                const amortization = isLast ? principal : 0;
+                
+                installmentsData.push({ installment, interest, amortization });
+                if(!isLast) balances.push(principal);
+                else balances.push(0);
+
+                totalPaid += installment;
+                totalInterest += interest;
+            }
+             
+            return { first: interestPayment, last: interestPayment + principal, totalPaid, totalInterest, installmentsData, balances };
+        }
+
+        function calculateMisto(principal, term, annualRate) {
+             const sacResult = calculateSAC(principal, term, annualRate);
+             const installmentsData = sacResult.installmentsData.slice(); // Copy
+             const balances = sacResult.balances.slice();
+             let totalPaid = sacResult.totalPaid;
+             let totalInterest = sacResult.totalInterest;
+
+             const midPoint = Math.floor(term / 2);
+             const fixedInstallment = installmentsData[midPoint].installment;
+             let balance = balances[midPoint + 1];
+
+             let newTotalPaid = 0;
+             let newTotalInterest = 0;
+             
+             for(let i=0; i<midPoint; i++){
+                newTotalPaid += installmentsData[i].installment;
+                newTotalInterest += installmentsData[i].interest;
+             }
+
+             const monthlyRate = annualRate / 12 / 100;
+
+             for (let i = midPoint; i < term; i++) {
+                 const interest = balance * monthlyRate;
+                 let amortization = fixedInstallment - interest;
+                 if (balance - amortization < 0) {
+                     amortization = balance;
+                 }
+                 balance -= amortization;
+
+                 installmentsData[i] = { installment: fixedInstallment, interest, amortization };
+                 balances[i+1] = balance > 0 ? balance : 0;
+                 newTotalPaid += fixedInstallment;
+                 newTotalInterest += interest;
+             }
+
+            return { first: installmentsData[0].installment, last: installmentsData[term-1].installment, totalPaid: newTotalPaid, totalInterest: newTotalInterest, installmentsData, balances };
+        }
+
+
+        const systems = [
+            { id: 'price', title: 'Francês (Price)', description: 'Parcelas constantes do início ao fim.', calculator: calculatePrice },
+            { id: 'sac', title: 'Constante (SAC)', description: 'Amortização constante e parcelas decrescentes.', calculator: calculateSAC },
+            { id: 'sacre', title: 'Crescente (SACRE)', description: 'Parcelas reajustadas, geralmente anualmente.', calculator: calculateSACRE },
+            { id: 'american', title: 'Americano', description: 'Paga-se só juros, e o principal no final.', calculator: calculateAmerican },
+            { id: 'misto', title: 'Misto (SAC/Price)', description: 'Híbrido que combina características de outros sistemas.', calculator: calculateMisto },
+        ];
+
+
+        const runSimulation = () => {
+            resultsGrid.innerHTML = '';
+            charts = {};
+            
+            const p = parseFloat(loanAmountInput.value);
+            const t = parseInt(loanTermInput.value);
+            const r = parseFloat(interestRateInput.value);
+            
+            const labels = Array.from({ length: t + 1 }, (_, i) => i);
+
+            systems.forEach(sys => {
+                const card = createCard(sys.id, sys.title, sys.description);
+                resultsGrid.appendChild(card);
+                
+                setTimeout(() => { card.style.opacity = 1; }, 100);
+
+                const result = sys.calculator(p, t, r);
+                
+                document.getElementById(`first-installment-${sys.id}`).textContent = formatCurrency(result.first);
+                document.getElementById(`last-installment-${sys.id}`).textContent = formatCurrency(result.last);
+                document.getElementById(`total-paid-${sys.id}`).textContent = formatCurrency(result.totalPaid);
+                document.getElementById(`total-interest-${sys.id}`).textContent = formatCurrency(result.totalInterest);
+                
+                const installmentValues = result.installmentsData.map(d => d.installment);
+                const amortizationValues = result.installmentsData.map(d => d.amortization);
+                const interestValues = result.installmentsData.map(d => d.interest);
+
+                renderChart(`installments-chart-${sys.id}`, 'Composição da Parcela', labels.slice(1), amortizationValues, interestValues);
+                renderChart(`balance-chart-${sys.id}`, 'Evolução do Saldo Devedor', labels, result.balances);
+            });
+        };
+        
+        simulateBtn.addEventListener('click', runSimulation);
+
+        updateDisplayValues();
+    </script>
+</body>
+</html>
